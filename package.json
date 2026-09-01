@@ -1,0 +1,24 @@
+{
+  "name": "alurichat",
+  "private": true,
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e",
+    "db:migrate": "pnpm --filter @alurichat/database exec prisma db push",
+    "db:seed": "pnpm --filter @alurichat/database seed",
+    "db:generate": "pnpm --filter @alurichat/database generate",
+    "dev:api": "pnpm --filter @alurichat/shared build && pnpm --filter @alurichat/api build && pnpm --filter @alurichat/api start",
+    "dev:web": "pnpm --filter @alurichat/web dev"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  }
+}

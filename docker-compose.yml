@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: alurichat-postgres
+    restart: unless-stopped
+    ports:
+      - "5437:5432"
+    environment:
+      POSTGRES_USER: alurichat
+      POSTGRES_PASSWORD: alurichat
+      POSTGRES_DB: alurichat
+    volumes:
+      - alurichat_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U alurichat -d alurichat"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: alurichat-redis
+    restart: unless-stopped
+    ports:
+      - "6381:6379"
+    volumes:
+      - alurichat_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  alurichat_postgres_data:
+  alurichat_redis_data:

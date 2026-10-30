@@ -1,48 +1,45 @@
 # Deployment
 
-## Local
+## Local (dev)
 
 ```bash
-docker compose up -d   # postgres, redis, minio
+docker compose up -d   # mysql :3311, redis :6381
 pnpm install
 pnpm db:migrate
+pnpm db:seed           # demo only — never in production
 pnpm dev
 ```
 
-## Docker (production-oriented)
+## Production (go-live)
 
-Typical images (to be added with apps):
+See **[GO_LIVE.md](./GO_LIVE.md)** for the full VPS checklist.
 
-- `alurichat-api` — NestJS
-- `alurichat-web` — Next.js
-- `alurichat-worker` — queue consumers (optional split)
+```bash
+pnpm prod:env teu-dominio.com admin@teu-dominio.com
+pnpm prod:deploy
+```
 
-Compose or Swarm stacks inject env from secrets; never bake `.env` into images.
+Stack (`docker-compose.prod.yml`):
 
-## Kubernetes overview
+| Service | Role |
+|---------|------|
+| `mysql` / `redis` | Internal only |
+| `api` / `web` | Internal only |
+| `proxy` (Caddy) | Public `:80` / `:443` + Let's Encrypt |
+| `migrate` / `bootstrap` / `backup` | `--profile tools` |
 
-| Resource | Notes |
-|----------|-------|
-| Deployments | `api`, `web`, `worker` |
-| Services | ClusterIP + Ingress (TLS) |
-| Secrets | `DATABASE_URL`, JWT secrets, `ENCRYPTION_KEY`, S3, OpenAI |
-| ConfigMaps | Non-secret config (`PLATFORM_NAME`, `API_PORT`, CORS) |
-| PVC / managed | Postgres, Redis, object storage (prefer managed cloud services) |
-| HPA | Scale API/workers on CPU / queue depth |
+Images: `apps/api/Dockerfile`, `apps/web/Dockerfile` (Next standalone).
 
-### Health
+## Backups
 
-- API: `GET /health` (liveness), `GET /ready` (DB + Redis)
-- Web: Next.js default / custom health route
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.prod --profile tools run --rm backup
+# or
+PLATFORM_TOKEN=... ./scripts/backup.sh
+```
 
-### Migrations
+## Health
 
-Run Prisma migrate as a Job or init container before rolling out new API pods.
-
-### Checklist
-
-- [ ] TLS termination at Ingress
-- [ ] Network policies between API and data stores
-- [ ] Backup Postgres + S3 buckets
-- [ ] Secret rotation runbook
-- [ ] Observability (metrics, logs, traces)
+- `GET https://api.<domain>/health`
+- `GET https://api.<domain>/ready`
+- `GET https://api.<domain>/metrics` + `Authorization: Bearer $METRICS_TOKEN`

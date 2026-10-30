@@ -200,14 +200,29 @@ export class TenantsService {
       });
     }
 
+    const ownerEmailRaw = dto.ownerEmail?.trim() || '';
+    const ownerPasswordRaw = dto.ownerPassword?.trim() || '';
+    if (!ownerEmailRaw || !ownerPasswordRaw) {
+      throw new BadRequestException({
+        code: 'OWNER_REQUIRED',
+        message: 'Informe e-mail e senha do owner para criar o acesso',
+      });
+    }
+    if (ownerPasswordRaw.length < 8) {
+      throw new BadRequestException({
+        code: 'PASSWORD_TOO_SHORT',
+        message: 'A senha do owner deve ter pelo menos 8 caracteres',
+      });
+    }
+
     const tenant = await this.prisma.$transaction(async (tx) => {
       const created = await tx.tenant.create({
         data: {
           slug: dto.slug,
           name: dto.name,
-          status: 'TRIAL',
+          status: 'ACTIVE',
           planId: plan.id,
-          trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+          trialEndsAt: null,
           settings: {},
           featureFlags: {},
         },
@@ -229,35 +244,38 @@ export class TenantsService {
         data: {
           tenantId: created.id,
           planId: plan.id,
-          status: 'TRIALING',
+          status: 'ACTIVE',
           currentPeriodStart: now,
           currentPeriodEnd: end,
           cancelAtPeriodEnd: false,
         },
       });
 
-      if (dto.ownerEmail && dto.ownerPassword) {
-        const passwordHash = await bcrypt.hash(dto.ownerPassword, 12);
-        const owner = await tx.user.upsert({
-          where: { email: dto.ownerEmail.toLowerCase() },
-          create: {
-            email: dto.ownerEmail.toLowerCase(),
-            passwordHash,
-            name: dto.ownerName || dto.ownerEmail.split('@')[0],
-            status: 'ACTIVE',
-          },
-          update: {},
-        });
-        await tx.membership.create({
-          data: {
-            tenantId: created.id,
-            userId: owner.id,
-            role: 'OWNER',
-            permissions: [],
-            status: 'ACTIVE',
-          },
-        });
-      }
+      const passwordHash = await bcrypt.hash(ownerPasswordRaw, 12);
+      const ownerEmail = ownerEmailRaw.toLowerCase();
+      const owner = await tx.user.upsert({
+        where: { email: ownerEmail },
+        create: {
+          email: ownerEmail,
+          passwordHash,
+          name: dto.ownerName?.trim() || ownerEmail.split('@')[0],
+          status: 'ACTIVE',
+        },
+        update: {
+          passwordHash,
+          name: dto.ownerName?.trim() || undefined,
+          status: 'ACTIVE',
+        },
+      });
+      await tx.membership.create({
+        data: {
+          tenantId: created.id,
+          userId: owner.id,
+          role: 'OWNER',
+          permissions: [],
+          status: 'ACTIVE',
+        },
+      });
 
       return created;
     });

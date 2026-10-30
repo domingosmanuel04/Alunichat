@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Scheduled / manual backup helper
+# MySQL backup helper (API endpoint or local mysqldump)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 API_URL="${API_URL:-http://127.0.0.1:4000}"
 TOKEN="${PLATFORM_TOKEN:-}"
+OUT_DIR="${BACKUP_DIR:-$ROOT/apps/api/backups}"
 
-mkdir -p "$ROOT/apps/api/backups"
+mkdir -p "$OUT_DIR"
 
 if [[ -n "$TOKEN" ]]; then
   curl -sf -X POST "$API_URL/api/v1/platform/backup" \
@@ -15,14 +16,31 @@ if [[ -n "$TOKEN" ]]; then
   exit 0
 fi
 
-# Local pg_dump fallback
-DB_URL="${DATABASE_URL:-postgresql://alurichat:alurichat@localhost:5437/alurichat}"
+DB_URL="${DATABASE_URL:-mysql://alurichat:alurichat@localhost:3311/alurichat}"
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
-OUT="$ROOT/apps/api/backups/alurichat-$STAMP.sql"
-if command -v pg_dump >/dev/null 2>&1; then
-  pg_dump --no-owner --no-acl --dbname "$DB_URL" -f "$OUT"
-  echo "backup_ok:$OUT"
-else
-  echo "pg_dump missing — use PLATFORM_TOKEN to call API backup endpoint"
+OUT="$OUT_DIR/alurichat-$STAMP.sql"
+
+if ! command -v mysqldump >/dev/null 2>&1; then
+  echo "mysqldump missing — install MySQL client or set PLATFORM_TOKEN to call API backup"
   exit 1
 fi
+
+# Parse mysql://user:pass@host:port/db
+proto_strip="${DB_URL#mysql://}"
+userpass="${proto_strip%%@*}"
+hostportdb="${proto_strip#*@}"
+user="${userpass%%:*}"
+pass="${userpass#*:}"
+hostport="${hostportdb%%/*}"
+db="${hostportdb#*/}"
+db="${db%%\?*}"
+host="${hostport%%:*}"
+port="${hostport##*:}"
+if [[ "$host" == "$port" ]]; then port=3306; fi
+
+MYSQL_PWD="$pass" mysqldump \
+  -h "$host" -P "$port" -u "$user" \
+  --single-transaction --routines --triggers \
+  "$db" > "$OUT"
+
+echo "backup_ok:$OUT"

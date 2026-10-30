@@ -1075,10 +1075,24 @@ export const api = {
     return asArray(data);
   },
 
-  approveSignup(tenantId: string) {
+  approveSignup(tenantId: string, password: string) {
     return request<Record<string, unknown>>(`/platform/signups/${tenantId}/approve`, {
       method: 'POST',
-      body: {},
+      body: { password },
+    });
+  },
+
+  createPlatformTenant(body: {
+    name: string;
+    slug: string;
+    planName?: string;
+    ownerName: string;
+    ownerEmail: string;
+    ownerPassword: string;
+  }) {
+    return request<Record<string, unknown>>('/tenants', {
+      method: 'POST',
+      body,
     });
   },
 
@@ -1142,6 +1156,34 @@ export const api = {
       return path;
     }
     return `${baseUrl()}${path.startsWith('/') ? '' : '/'}${path}`;
+  },
+
+  /**
+   * Open a payment proof via authenticated API (static /uploads/payment-proofs is locked).
+   */
+  async openPaymentProof(path?: string | null, opts?: { platform?: boolean }) {
+    if (!path) return;
+    const bare = path.split('?')[0];
+    const filename = bare.split('/').pop();
+    if (!filename) return;
+    const endpoint = opts?.platform
+      ? `/uploads/platform/payment-proofs/${encodeURIComponent(filename)}`
+      : `/uploads/payment-proofs/${encodeURIComponent(filename)}`;
+    const token = getAccessToken();
+    const res = await fetch(`${baseUrl()}/api/v1${endpoint}`, {
+      headers: {
+        Accept: '*/*',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(getTenantSlug() ? { 'X-Tenant-Slug': getTenantSlug()! } : {}),
+      },
+    });
+    if (!res.ok) {
+      throw new ApiError('Falha ao abrir comprovativo', 'PROOF_DOWNLOAD', res.status);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank', 'noopener,noreferrer');
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
   },
 
   async listCompanies() {

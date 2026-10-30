@@ -207,7 +207,6 @@ export default function SettingsPlanoPage() {
     available?: { key: string; label: string; priceMonthly: number }[];
     active?: string[];
   } | null>(null);
-  const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [addonsBusy, setAddonsBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -235,34 +234,6 @@ export default function SettingsPlanoPage() {
 
   useEffect(() => {
     void load();
-  }, [load]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const sessionId = new URLSearchParams(window.location.search).get('checkout');
-    if (!sessionId) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        await api.confirmCheckout(sessionId);
-        if (!cancelled) {
-          toast.success('Pagamento confirmado');
-          await load();
-          const url = new URL(window.location.href);
-          url.searchParams.delete('checkout');
-          window.history.replaceState({}, '', url.pathname + url.search);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          toast.error(
-            err instanceof Error ? err.message : 'Falha ao confirmar checkout',
-          );
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
   }, [load]);
 
   const subscription = data?.subscription;
@@ -342,29 +313,6 @@ export default function SettingsPlanoPage() {
       toast.error(err instanceof Error ? err.message : 'Falha ao obter fatura');
     } finally {
       setInvoiceLoading(false);
-    }
-  }
-
-  async function startCheckout(planName: string) {
-    setCheckoutBusy(true);
-    try {
-      const session = await api.createCheckout({ planName });
-      if (session.checkoutUrl) {
-        toast.success('Sessão de checkout criada');
-        window.location.href = session.checkoutUrl;
-        return;
-      }
-      if (session.sessionId) {
-        await api.confirmCheckout(session.sessionId);
-        toast.success('Checkout confirmado');
-        await load();
-      } else {
-        toast.error('Checkout sem URL de sessão');
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Falha no checkout');
-    } finally {
-      setCheckoutBusy(false);
     }
   }
 
@@ -593,11 +541,14 @@ export default function SettingsPlanoPage() {
                         </div>
                         <button
                           type="button"
-                          disabled={checkoutBusy || !p.name}
-                          onClick={() => void startCheckout(String(p.name))}
+                          disabled={!p.name || awaitingChange}
+                          onClick={() => {
+                            setSelectedPlan(String(p.name));
+                            setShowForm(true);
+                          }}
                           className="rounded-md bg-emerald-600/90 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-emerald-500 disabled:opacity-60"
                         >
-                          Checkout
+                          Pedir com comprovativo
                         </button>
                       </li>
                     );
@@ -707,7 +658,7 @@ export default function SettingsPlanoPage() {
               ) : (
                 <ul className="mt-3 space-y-2">
                   {paymentProofs.slice(0, 10).map((proof, idx) => {
-                    const url = api.mediaUrl(proof.paymentProofUrl || '');
+                    const hasProof = Boolean(proof.paymentProofUrl);
                     return (
                       <li
                         key={`${proof.submittedAt || idx}-${proof.planName || idx}`}
@@ -724,15 +675,24 @@ export default function SettingsPlanoPage() {
                             {proof.status ? ` · ${proof.status}` : ''}
                           </p>
                         </div>
-                        {url ? (
-                          <a
-                            href={url}
-                            target="_blank"
-                            rel="noreferrer"
+                        {hasProof ? (
+                          <button
+                            type="button"
                             className="text-xs text-emerald-400 hover:underline"
+                            onClick={() => {
+                              void api
+                                .openPaymentProof(proof.paymentProofUrl)
+                                .catch((err) =>
+                                  toast.error(
+                                    err instanceof Error
+                                      ? err.message
+                                      : 'Falha ao abrir comprovativo',
+                                  ),
+                                );
+                            }}
                           >
                             Ver ficheiro
-                          </a>
+                          </button>
                         ) : null}
                       </li>
                     );

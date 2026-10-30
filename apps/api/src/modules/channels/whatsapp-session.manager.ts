@@ -794,7 +794,7 @@ export class WhatsAppSessionManager implements OnModuleInit, OnModuleDestroy {
           OR: [
             { source: 'whatsapp' },
             { phone: { contains: '@' } },
-            { metadata: { path: ['channelId'], equals: ch.id } },
+            { metadata: { path: '$.channelId', equals: ch.id } },
           ],
         },
         take: 8000,

@@ -1,13 +1,15 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto';
+import { requiredSecret } from '../../common/config/required-secret';
 
 @Injectable()
 export class EncryptionService {
   private readonly key: Buffer;
 
   constructor(config: ConfigService) {
-    const raw = config.get<string>(
+    const raw = requiredSecret(
+      config,
       'ENCRYPTION_KEY',
       'change-me-32-byte-encryption-key!!',
     );

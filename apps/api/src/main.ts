@@ -35,6 +35,10 @@ async function bootstrap() {
   const config = app.get(ConfigService);
   const port = Number(config.get('API_PORT') ?? 4000);
   const corsOrigin = config.get<string>('CORS_ORIGIN', 'http://localhost:3000');
+  const isProd = (process.env.NODE_ENV || '').toLowerCase() === 'production';
+  const enableSwagger =
+    config.get<string>('ENABLE_SWAGGER') === 'true' ||
+    (!isProd && config.get<string>('ENABLE_SWAGGER') !== 'false');
 
   app.use(
     helmet({
@@ -43,6 +47,15 @@ async function bootstrap() {
   );
   app.use(compression());
   app.use(cookieParser());
+
+  // Block public access to payment proofs (authenticated via /api/v1/uploads/...).
+  app.use('/uploads/payment-proofs', (_req, res) => {
+    res.status(401).json({
+      code: 'AUTH_REQUIRED',
+      message: 'Comprovativos requerem autenticação em /api/v1/uploads/payment-proofs/:filename',
+    });
+  });
+  // Public static assets (logos, etc.) — never payment-proofs.
   app.useStaticAssets(join(process.cwd(), 'uploads'), {
     prefix: '/uploads/',
   });
@@ -70,18 +83,22 @@ async function bootstrap() {
     }),
   );
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('Alurichat API')
-    .setDescription('Multi-tenant omnichannel SaaS API')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api/docs', app, document);
+  if (enableSwagger) {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('Alurichat API')
+      .setDescription('Multi-tenant omnichannel SaaS API')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .build();
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('api/docs', app, document);
+  }
 
   await app.listen(port);
   // eslint-disable-next-line no-console
-  console.log(`Alurichat API listening on :${port} (docs: /api/docs)`);
+  console.log(
+    `Alurichat API listening on :${port}${enableSwagger ? ' (docs: /api/docs)' : ' (swagger disabled)'}`,
+  );
 }
 
 bootstrap();

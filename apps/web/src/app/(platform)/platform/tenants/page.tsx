@@ -3,6 +3,7 @@
 import { AppTopbar } from '@/components/layout/AppTopbar';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/layout/ApiListPage';
 import { api, ApiError, type Tenant } from '@/lib/api';
@@ -13,26 +14,40 @@ import { toast } from 'sonner';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
+function slugify(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+}
+
 export default function PlatformTenantsPage() {
   const router = useRouter();
   const fetchMe = useAuthStore((s) => s.fetchMe);
   const [tenants, setTenants] = useState<Tenant[]>([]);
-  const [plans, setPlans] = useState<{ name?: string; displayName?: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [missing, setMissing] = useState(false);
   const [acting, setActing] = useState<string | null>(null);
-  const [planDraft, setPlanDraft] = useState<Record<string, string>>({});
+  const [showCreate, setShowCreate] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    name: '',
+    slug: '',
+    ownerName: '',
+    ownerEmail: '',
+    ownerPassword: '',
+  });
+  const [slugTouched, setSlugTouched] = useState(false);
 
   async function load() {
     setLoading(true);
     try {
-      const [list, planList] = await Promise.all([
-        api.platformTenants(),
-        api.listBillingPlans().catch(() => []),
-      ]);
+      const list = await api.platformTenants();
       setTenants(list);
-      setPlans(planList as { name?: string; displayName?: string }[]);
       setMissing(false);
       setError(null);
     } catch (err) {
@@ -46,6 +61,43 @@ export default function PlatformTenantsPage() {
   useEffect(() => {
     void load();
   }, []);
+
+  async function createTenant() {
+    if (!createForm.name.trim() || !createForm.slug.trim()) {
+      toast.error('Informe nome e slug da empresa');
+      return;
+    }
+    if (!createForm.ownerEmail.trim() || createForm.ownerPassword.trim().length < 8) {
+      toast.error('Informe e-mail e senha do owner (mín. 8 caracteres)');
+      return;
+    }
+    setCreating(true);
+    try {
+      await api.createPlatformTenant({
+        name: createForm.name.trim(),
+        slug: createForm.slug.trim(),
+        planName: 'PRO',
+        ownerName: createForm.ownerName.trim() || createForm.ownerEmail.trim(),
+        ownerEmail: createForm.ownerEmail.trim(),
+        ownerPassword: createForm.ownerPassword.trim(),
+      });
+      toast.success('Empresa e owner criados — já pode entrar no painel');
+      setShowCreate(false);
+      setCreateForm({
+        name: '',
+        slug: '',
+        ownerName: '',
+        ownerEmail: '',
+        ownerPassword: '',
+      });
+      setSlugTouched(false);
+      await load();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Falha ao criar empresa');
+    } finally {
+      setCreating(false);
+    }
+  }
 
   async function suspend(id: string) {
     setActing(id);
@@ -68,24 +120,6 @@ export default function PlatformTenantsPage() {
       await load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Falha');
-    } finally {
-      setActing(null);
-    }
-  }
-
-  async function changePlan(id: string) {
-    const planName = planDraft[id];
-    if (!planName) {
-      toast.error('Selecione um plano');
-      return;
-    }
-    setActing(id);
-    try {
-      await api.changeTenantPlan(id, planName);
-      toast.success('Plano atualizado');
-      await load();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Falha ao mudar plano');
     } finally {
       setActing(null);
     }
@@ -124,15 +158,86 @@ export default function PlatformTenantsPage() {
         title="Empresas"
         subtitle="Contas da plataforma"
         actions={
-          <Link
-            href="/platform/signups"
-            className="rounded-lg border border-surface-border px-3 py-1.5 text-xs text-ink-muted hover:bg-white/5"
-          >
-            Ver aprovações
-          </Link>
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={() => setShowCreate((v) => !v)}>
+              {showCreate ? 'Fechar' : 'Criar owner'}
+            </Button>
+            <Link
+              href="/platform/signups"
+              className="rounded-lg border border-surface-border px-3 py-1.5 text-xs text-ink-muted hover:bg-white/5"
+            >
+              Ver aprovações
+            </Link>
+          </div>
         }
       />
       <div className="flex-1 overflow-auto p-5">
+        {showCreate ? (
+          <div className="mb-5 rounded-xl border border-surface-border bg-surface-raised/40 p-4">
+            <h3 className="font-display text-base font-semibold text-ink">
+              Criar empresa com acesso owner
+            </h3>
+            <p className="mt-1 text-sm text-ink-muted">
+              O Super Admin define a senha. O owner pode entrar no painel de imediato.
+            </p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <Input
+                label="Nome da empresa"
+                value={createForm.name}
+                onChange={(e) => {
+                  const name = e.target.value;
+                  setCreateForm((f) => ({
+                    ...f,
+                    name,
+                    slug: slugTouched ? f.slug : slugify(name),
+                  }));
+                }}
+                placeholder="Empresa XYZ"
+              />
+              <Input
+                label="Slug"
+                value={createForm.slug}
+                onChange={(e) => {
+                  setSlugTouched(true);
+                  setCreateForm((f) => ({ ...f, slug: slugify(e.target.value) }));
+                }}
+                placeholder="empresa-xyz"
+              />
+              <Input
+                label="Nome do owner"
+                value={createForm.ownerName}
+                onChange={(e) =>
+                  setCreateForm((f) => ({ ...f, ownerName: e.target.value }))
+                }
+                placeholder="Nome completo"
+              />
+              <Input
+                label="E-mail do owner"
+                type="email"
+                value={createForm.ownerEmail}
+                onChange={(e) =>
+                  setCreateForm((f) => ({ ...f, ownerEmail: e.target.value }))
+                }
+                placeholder="owner@empresa.com"
+              />
+              <Input
+                label="Senha do owner"
+                type="text"
+                value={createForm.ownerPassword}
+                onChange={(e) =>
+                  setCreateForm((f) => ({ ...f, ownerPassword: e.target.value }))
+                }
+                placeholder="Mínimo 8 caracteres"
+              />
+            </div>
+            <div className="mt-4">
+              <Button loading={creating} onClick={() => void createTenant()}>
+                Criar empresa e owner
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
         {loading ? (
           <div className="space-y-2">
             {Array.from({ length: 5 }).map((_, i) => (
@@ -155,7 +260,6 @@ export default function PlatformTenantsPage() {
                 <tr>
                   <th className="px-4 py-3">Nome</th>
                   <th className="px-4 py-3">Slug</th>
-                  <th className="px-4 py-3">Plano</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Criado</th>
                   <th className="px-4 py-3">Ações</th>
@@ -166,11 +270,6 @@ export default function PlatformTenantsPage() {
                   <tr key={t.id} className="border-t border-surface-border">
                     <td className="px-4 py-3 font-medium text-ink">{t.name}</td>
                     <td className="px-4 py-3 text-ink-muted">{t.slug}</td>
-                    <td className="px-4 py-3 text-ink-muted">
-                      {typeof t.plan === 'string'
-                        ? t.plan
-                        : t.plan?.name || t.plan?.tier || '—'}
-                    </td>
                     <td className="px-4 py-3">
                       <Badge tone={t.status === 'ACTIVE' ? 'success' : 'default'}>
                         {t.status || '—'}
@@ -181,36 +280,6 @@ export default function PlatformTenantsPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap items-center gap-2">
-                        <select
-                          className="h-8 rounded-md border border-surface-border bg-surface-overlay px-2 text-xs text-ink"
-                          value={
-                            planDraft[t.id] ||
-                            (typeof t.plan === 'string'
-                              ? t.plan
-                              : t.plan?.name || '')
-                          }
-                          onChange={(e) =>
-                            setPlanDraft((prev) => ({
-                              ...prev,
-                              [t.id]: e.target.value,
-                            }))
-                          }
-                        >
-                          <option value="">Plano…</option>
-                          {plans.map((p) => (
-                            <option key={String(p.name)} value={String(p.name)}>
-                              {p.displayName || p.name}
-                            </option>
-                          ))}
-                        </select>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          loading={acting === t.id}
-                          onClick={() => void changePlan(t.id)}
-                        >
-                          Mudar
-                        </Button>
                         <Button
                           size="sm"
                           variant="ghost"

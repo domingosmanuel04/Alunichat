@@ -46,15 +46,18 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
         });
       }
       await this.apiKeys.touchLastUsed(apiKey.id);
+      const scopes = Array.isArray(apiKey.scopes)
+        ? apiKey.scopes.filter((s): s is string => typeof s === 'string')
+        : [];
       request.user = {
         sub: `apikey:${apiKey.id}`,
         email: `apikey+${apiKey.id}@alurichat.local`,
         tenantId: apiKey.tenantId,
         role: 'API_KEY',
-        permissions: apiKey.scopes?.includes('*')
+        permissions: scopes.includes('*')
           ? ['*']
-          : apiKey.scopes?.length
-            ? apiKey.scopes
+          : scopes.length
+            ? scopes
             : ['*'],
         platformRole: null,
       };

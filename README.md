@@ -13,7 +13,7 @@ Plataforma SaaS multi-tenant de atendimento omnichannel, CRM, Kanban, automaçõ
 | Monorepo | pnpm workspaces + Turborepo |
 | API | NestJS + TypeScript (`apps/api`) |
 | Web | Next.js 15 + React 19 (`apps/web`) |
-| DB | PostgreSQL + Prisma (`packages/database`) |
+| DB | MySQL + Prisma (`packages/database`) |
 | Shared | Types / permissions (`packages/shared`) |
 | Cache / queues | Redis + BullMQ |
 | Realtime | Socket.IO |
@@ -34,7 +34,7 @@ docker compose up -d
 
 | Service | Host port |
 |---------|-----------|
-| PostgreSQL | `5437` |
+| MySQL | `3311` |
 | Redis | `6381` |
 
 ### 2. Environment
@@ -60,13 +60,23 @@ pnpm dev
 | Swagger | http://localhost:4000/api/docs |
 | Health | http://localhost:4000/health |
 
-### Demo credentials (after seed)
+### Credentials (after seed)
 
-| Role | Email | Password | Tenant |
-|------|-------|----------|--------|
-| Super Admin | `superadmin@alurichat.com` | `SuperAdmin123!` | — |
-| Owner | `owner@demo.alurichat.com` | `DemoOwner123!` | `demo` |
-| Agent | `agent@demo.alurichat.com` | `DemoAgent123!` | `demo` |
+| Role | Email | Password |
+|------|-------|----------|
+| Super Admin | `dpmanuel95@gmail.com` | `Manuel@121@` |
+
+Cadastros públicos ficam pendentes até o Super Admin aprovar em `/platform/signups` e definir a senha do owner.
+
+## Production (go-live)
+
+Guia completo: **[docs/GO_LIVE.md](docs/GO_LIVE.md)**
+
+```bash
+pnpm prod:env teu-dominio.com admin@teu-dominio.com
+# DNS: teu-dominio.com + api.teu-dominio.com → VPS
+pnpm prod:deploy
+```
 
 ## Scripts
 
@@ -75,12 +85,16 @@ pnpm dev
 | `pnpm dev` | API + Web em watch |
 | `pnpm build` | Build de todos os packages |
 | `pnpm lint` | Typecheck / lint |
-| `pnpm db:migrate` | Prisma migrate |
-| `pnpm db:seed` | Seed demo |
+| `pnpm db:migrate` | Prisma migrate deploy |
+| `pnpm db:bootstrap` | Planos + Super Admin (produção) |
+| `pnpm db:seed` | Seed demo (bloqueado em production) |
 | `pnpm db:generate` | Prisma client |
+| `pnpm prod:env` | Gerar `.env.prod` com secrets |
+| `pnpm prod:deploy` | Deploy Docker + Caddy HTTPS |
 
 ## Documentation
 
+- [Go-live](docs/GO_LIVE.md)
 - [Architecture](docs/Architecture.md)
 - [Multi-tenant](docs/MultiTenant.md)
 - [Security](docs/Security.md)

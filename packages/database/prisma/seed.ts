@@ -179,6 +179,15 @@ const PLAN_DISPLAY: Record<PlanName, string> = {
 };
 
 async function main() {
+  if (
+    (process.env.NODE_ENV || '').toLowerCase() === 'production' &&
+    process.env.ALLOW_PROD_SEED !== 'true'
+  ) {
+    throw new Error(
+      'Refusing to run demo seed in production. Use: pnpm db:bootstrap (plans + super admin only).',
+    );
+  }
+
   console.log('Seeding ALURICHAT database...');
 
   // Plans
@@ -213,27 +222,42 @@ async function main() {
     create: { key: 'app.name', value: { name: 'ALURICHAT' } },
   });
 
-  // Super admin
-  const superAdminHash = await bcrypt.hash('SuperAdmin123!', 10);
+  // Super admin (única conta de acesso da plataforma)
+  const SUPER_ADMIN_EMAIL = 'dpmanuel95@gmail.com';
+  const SUPER_ADMIN_PASSWORD = 'Manuel@121@';
+  const superAdminHash = await bcrypt.hash(SUPER_ADMIN_PASSWORD, 10);
   const superAdmin = await prisma.user.upsert({
-    where: { email: 'superadmin@alurichat.com' },
+    where: { email: SUPER_ADMIN_EMAIL },
     update: {
       passwordHash: superAdminHash,
-      name: 'Super Admin',
+      name: 'Domingos Paulo Manuel',
       platformRole: PlatformRole.SUPER_ADMIN,
       status: UserStatus.ACTIVE,
     },
     create: {
-      email: 'superadmin@alurichat.com',
+      email: SUPER_ADMIN_EMAIL,
       passwordHash: superAdminHash,
-      name: 'Super Admin',
+      name: 'Domingos Paulo Manuel',
       platformRole: PlatformRole.SUPER_ADMIN,
       status: UserStatus.ACTIVE,
     },
   });
+
+  // Remove contas demo antigas
+  await prisma.user.deleteMany({
+    where: {
+      email: {
+        in: [
+          'superadmin@alurichat.com',
+          'owner@demo.alurichat.com',
+          'agent@demo.alurichat.com',
+        ],
+      },
+    },
+  });
   console.log('✓ Super admin');
 
-  // Demo tenant
+  // Demo tenant (dados de exemplo; acesso só via Super Admin / owners criados)
   const tenant = await prisma.tenant.upsert({
     where: { slug: 'demo' },
     update: {
@@ -256,39 +280,10 @@ async function main() {
   });
   console.log('✓ Demo tenant');
 
-  // Demo users
-  const ownerHash = await bcrypt.hash('DemoOwner123!', 10);
-  const owner = await prisma.user.upsert({
-    where: { email: 'owner@demo.alurichat.com' },
-    update: {
-      passwordHash: ownerHash,
-      name: 'Demo Owner',
-      status: UserStatus.ACTIVE,
-    },
-    create: {
-      email: 'owner@demo.alurichat.com',
-      passwordHash: ownerHash,
-      name: 'Demo Owner',
-      status: UserStatus.ACTIVE,
-    },
-  });
-
-  const agentHash = await bcrypt.hash('DemoAgent123!', 10);
-  const agent = await prisma.user.upsert({
-    where: { email: 'agent@demo.alurichat.com' },
-    update: {
-      passwordHash: agentHash,
-      name: 'Demo Agent',
-      status: UserStatus.ACTIVE,
-    },
-    create: {
-      email: 'agent@demo.alurichat.com',
-      passwordHash: agentHash,
-      name: 'Demo Agent',
-      status: UserStatus.ACTIVE,
-    },
-  });
-  console.log('✓ Demo users');
+  // Seed usa o Super Admin para relações de dados (sem contas demo separadas)
+  const owner = superAdmin;
+  const agent = superAdmin;
+  console.log('✓ Seed actors (super admin)');
 
   // Default workspace
   let workspace = await prisma.workspace.findFirst({
@@ -831,9 +826,7 @@ async function main() {
   });
 
   console.log('\nSeed complete.');
-  console.log(`  Super admin: ${superAdmin.email} / SuperAdmin123!`);
-  console.log('  Owner:       owner@demo.alurichat.com / DemoOwner123!');
-  console.log('  Agent:       agent@demo.alurichat.com / DemoAgent123!');
+  console.log(`  Super admin: ${SUPER_ADMIN_EMAIL} / ${SUPER_ADMIN_PASSWORD}`);
   console.log(`  Tenant:      ${tenant.slug} (${tenant.id})`);
   console.log(`  Conversations: ${conversations.length}`);
 }

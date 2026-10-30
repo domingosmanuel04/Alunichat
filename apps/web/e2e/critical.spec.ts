@@ -16,8 +16,8 @@ test.describe('critical flows', () => {
 
   test('login → dashboard (demo)', async ({ page }) => {
     await page.goto('/login');
-    await page.getByLabel(/e-?mail/i).fill('owner@demo.alurichat.com');
-    await page.getByLabel(/senha|password/i).fill('DemoOwner123!');
+    await page.getByLabel(/e-?mail/i).fill('dpmanuel95@gmail.com');
+    await page.getByLabel(/senha|password/i).fill('Manuel@121@');
     const tenant = page.getByLabel(/empresa|tenant|slug/i);
     if (await tenant.count()) await tenant.fill('demo');
     await page.getByRole('button', { name: /entrar|login/i }).click();

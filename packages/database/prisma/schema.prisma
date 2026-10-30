@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
@@ -460,7 +460,7 @@ model Membership {
   userId      String
   workspaceId String?
   role        TenantRole
-  permissions String[]
+  permissions Json             @default("[]")
   status      MembershipStatus @default(ACTIVE)
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
@@ -1180,7 +1180,7 @@ model Webhook {
   tenantId  String
   url       String
   secret    String
-  events    String[]
+  events    Json     @default("[]")
   active    Boolean  @default(true)
   headers   Json?
   createdAt DateTime @default(now())
@@ -1319,10 +1319,10 @@ model ApiKey {
   name        String
   keyPrefix   String
   keyHash     String
-  scopes      String[]
+  scopes      Json      @default("[]")
   expiresAt   DateTime?
   lastUsedAt  DateTime?
-  ipAllowlist String[]
+  ipAllowlist Json      @default("[]")
   revokedAt   DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

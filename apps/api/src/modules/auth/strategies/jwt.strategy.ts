@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
+import { requiredSecret } from '../../../common/config/required-secret';
 import { JwtPayload } from '../../../common/decorators/current-user.decorator';
 
 @Injectable()
@@ -10,7 +11,8 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: config.get<string>(
+      secretOrKey: requiredSecret(
+        config,
         'JWT_SECRET',
         'change-me-jwt-secret-min-32-chars-long!!',
       ),

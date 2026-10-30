@@ -6,6 +6,7 @@ import {
   DomainEvents,
   WebhookDispatchEvent,
 } from '../../infrastructure/events/domain-events';
+import { jsonArrayIncludes } from '../../common/utils/json-array';
 
 @Injectable()
 export class WebhookDispatcherService {
@@ -19,13 +20,18 @@ export class WebhookDispatcherService {
   }
 
   async dispatch(tenantId: string, eventName: string, payload: unknown) {
-    const webhooks = await this.prisma.webhook.findMany({
-      where: {
-        tenantId,
-        active: true,
-        events: { has: eventName },
-      },
-    });
+    const webhooks = (
+      await this.prisma.webhook.findMany({
+        where: {
+          tenantId,
+          active: true,
+        },
+      })
+    ).filter(
+      (webhook) =>
+        jsonArrayIncludes(webhook.events, eventName) ||
+        jsonArrayIncludes(webhook.events, '*'),
+    );
 
     for (const webhook of webhooks) {
       await this.deliver(webhook, tenantId, eventName, payload);

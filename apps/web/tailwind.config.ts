@@ -25,10 +25,22 @@ const config: Config = {
           muted: '#94A3B8',
           faint: '#64748B',
         },
+        void: {
+          DEFAULT: '#0f0f0f',
+          soft: '#161616',
+          edge: '#1c1c1c',
+        },
+        lamp: {
+          amber: '#f5c26b',
+          glow: '#ffd89a',
+          core: '#ffe8c2',
+        },
       },
       fontFamily: {
         sans: ['var(--font-dm-sans)', 'system-ui', 'sans-serif'],
         display: ['var(--font-sora)', 'system-ui', 'sans-serif'],
+        'lamp-display': ['var(--font-fraunces)', 'Georgia', 'serif'],
+        'lamp-sans': ['var(--font-outfit)', 'system-ui', 'sans-serif'],
       },
       backgroundImage: {
         'hero-glow':

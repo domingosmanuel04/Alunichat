@@ -1,5 +1,5 @@
 import {
-  BadRequestException,
+  GoneException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -120,76 +120,24 @@ export class FutureService {
     return { items: next };
   }
 
-  // ─── Payments stub ───────────────────────────────────────────────────────
+  // ─── Payments: stub desligado — só comprovativo + aprovação platform ─────
   async createCheckout(
-    tenantId: string,
-    body: { planName?: string; provider?: string; amount?: number },
-  ) {
-    const provider = (body.provider || 'stripe_stub').toLowerCase();
-    const sessionId = `cs_${randomBytes(12).toString('hex')}`;
-    const payload = {
-      sessionId,
-      tenantId,
-      planName: body.planName || 'PRO',
-      provider,
-      amount: body.amount ?? 0,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-      checkoutUrl: `${this.config.get('WEB_URL', 'http://localhost:3000')}/settings/plano?checkout=${sessionId}`,
-    };
-    await this.redis.set(
-      `checkout:${sessionId}`,
-      JSON.stringify(payload),
-      60 * 60 * 24,
-    );
-    return payload;
+    _tenantId: string,
+    _body: { planName?: string; provider?: string; amount?: number },
+  ): Promise<never> {
+    throw new GoneException({
+      code: 'CHECKOUT_DISABLED',
+      message:
+        'Checkout online desativado. Peça mudança de plano em Definições → Plano e anexe o comprovativo de pagamento.',
+    });
   }
 
-  async confirmCheckout(sessionId: string) {
-    const raw = await this.redis.get(`checkout:${sessionId}`);
-    if (!raw) {
-      throw new NotFoundException({
-        code: 'CHECKOUT_NOT_FOUND',
-        message: 'Sessão de pagamento não encontrada',
-      });
-    }
-    const session = JSON.parse(raw) as {
-      tenantId: string;
-      planName: string;
-      provider: string;
-    };
-    const plan = await this.prisma.plan.findUnique({
-      where: {
-        name: session.planName as
-          | 'FREE'
-          | 'STARTER'
-          | 'PRO'
-          | 'BUSINESS'
-          | 'ENTERPRISE',
-      },
+  async confirmCheckout(_sessionId: string): Promise<never> {
+    throw new GoneException({
+      code: 'CHECKOUT_DISABLED',
+      message:
+        'Confirmação de checkout desativada. O plano é ativado após aprovação do comprovativo pelo Super Admin.',
     });
-    if (!plan) {
-      throw new BadRequestException({ code: 'PLAN_NOT_FOUND' });
-    }
-    const now = new Date();
-    const periodEnd = new Date(now);
-    periodEnd.setMonth(periodEnd.getMonth() + 1);
-    await this.prisma.tenant.update({
-      where: { id: session.tenantId },
-      data: { planId: plan.id, status: 'ACTIVE', trialEndsAt: null },
-    });
-    await this.prisma.subscription.updateMany({
-      where: { tenantId: session.tenantId },
-      data: {
-        planId: plan.id,
-        status: 'ACTIVE',
-        currentPeriodStart: now,
-        currentPeriodEnd: periodEnd,
-      },
-    });
-    const done = { ...session, status: 'paid', paidAt: now.toISOString() };
-    await this.redis.set(`checkout:${sessionId}`, JSON.stringify(done), 86400);
-    return done;
   }
 
   // ─── Add-ons ─────────────────────────────────────────────────────────────

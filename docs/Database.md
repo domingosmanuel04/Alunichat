@@ -30,9 +30,11 @@ All tenant-scoped entities include `tenant_id`, `created_at`, `updated_at`. Soft
 ## Scripts
 
 ```bash
-pnpm db:generate   # prisma generate
-pnpm db:migrate    # prisma migrate
-pnpm db:seed       # seed demo tenant / users
+pnpm db:generate      # prisma generate
+pnpm db:migrate       # prisma migrate deploy (CI / prod)
+pnpm db:migrate:dev   # prisma migrate dev (local new migrations)
+pnpm db:push          # prisma db push (dev-only, no history)
+pnpm db:seed          # seed — never on production
 ```
 
 ## Conventions

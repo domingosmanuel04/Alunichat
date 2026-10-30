@@ -1,0 +1,232 @@
+# Production stack with automatic HTTPS (Caddy).
+# Only ports 80/443 are published. MySQL/Redis/API/Web stay on the internal network.
+#
+#   pnpm prod:env teudominio.com admin@email.com
+#   pnpm prod:deploy
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: alurichat-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_USER: ${MYSQL_USER:-alurichat}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-alurichat}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD}
+    volumes:
+      - alurichat_mysql_data:/var/lib/mysql
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'mysqladmin',
+          'ping',
+          '-h',
+          '127.0.0.1',
+          '-u${MYSQL_USER:-alurichat}',
+          '-p${MYSQL_PASSWORD}',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    networks:
+      - alurichat
+
+  redis:
+    image: redis:7-alpine
+    container_name: alurichat-redis
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - alurichat_redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - alurichat
+
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    profiles: ['tools']
+    environment:
+      DATABASE_URL: mysql://${MYSQL_USER:-alurichat}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE:-alurichat}
+      NODE_ENV: production
+    depends_on:
+      mysql:
+        condition: service_healthy
+    working_dir: /app
+    command:
+      [
+        'pnpm',
+        '--filter',
+        '@alurichat/database',
+        'exec',
+        'prisma',
+        'migrate',
+        'deploy',
+      ]
+    networks:
+      - alurichat
+
+  bootstrap:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    profiles: ['tools']
+    env_file: ${ENV_FILE:-.env.prod}
+    environment:
+      DATABASE_URL: mysql://${MYSQL_USER:-alurichat}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE:-alurichat}
+      NODE_ENV: production
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:?set BOOTSTRAP_ADMIN_EMAIL}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:?set BOOTSTRAP_ADMIN_PASSWORD}
+      BOOTSTRAP_ADMIN_NAME: ${BOOTSTRAP_ADMIN_NAME:-Super Admin}
+    depends_on:
+      mysql:
+        condition: service_healthy
+    working_dir: /app
+    command: ['pnpm', '--filter', '@alurichat/database', 'bootstrap']
+    networks:
+      - alurichat
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: alurichat-api
+    restart: unless-stopped
+    env_file: ${ENV_FILE:-.env.prod}
+    environment:
+      NODE_ENV: production
+      API_PORT: 4000
+      DATABASE_URL: mysql://${MYSQL_USER:-alurichat}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE:-alurichat}
+      REDIS_URL: redis://redis:6379
+      CORS_ORIGIN: ${CORS_ORIGIN:?set CORS_ORIGIN}
+      WEB_URL: ${WEB_URL:?set WEB_URL}
+      ENABLE_SWAGGER: ${ENABLE_SWAGGER:-false}
+      METRICS_TOKEN: ${METRICS_TOKEN:?set METRICS_TOKEN}
+      WHATSAPP_SESSIONS_PATH: /app/apps/api/data/whatsapp-sessions
+    volumes:
+      - alurichat_uploads:/app/apps/api/uploads
+      - alurichat_backups:/app/apps/api/backups
+      - alurichat_wa_sessions:/app/apps/api/data/whatsapp-sessions
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - '4000'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:4000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - alurichat
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?set NEXT_PUBLIC_API_URL}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:?set NEXT_PUBLIC_SITE_URL}
+    container_name: alurichat-web
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+    depends_on:
+      api:
+        condition: service_healthy
+    expose:
+      - '3000'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - alurichat
+
+  proxy:
+    image: caddy:2-alpine
+    container_name: alurichat-proxy
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - alurichat_caddy_data:/data
+      - alurichat_caddy_config:/config
+    depends_on:
+      web:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    networks:
+      - alurichat
+
+  backup:
+    image: mysql:8.4
+    profiles: ['tools']
+    volumes:
+      - alurichat_backups:/backups
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      MYSQL_USER: ${MYSQL_USER:-alurichat}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-alurichat}
+      MYSQL_PWD: ${MYSQL_PASSWORD}
+    entrypoint:
+      [
+        'bash',
+        '-c',
+        'mysqldump -h mysql -u"$$MYSQL_USER" --single-transaction --routines --triggers "$$MYSQL_DATABASE" > /backups/alurichat-$$(date -u +%Y%m%dT%H%M%SZ).sql && ls -lah /backups | tail',
+      ]
+    networks:
+      - alurichat
+
+volumes:
+  alurichat_mysql_data:
+  alurichat_redis_data:
+  alurichat_uploads:
+  alurichat_backups:
+  alurichat_wa_sessions:
+  alurichat_caddy_data:
+  alurichat_caddy_config:
+
+networks:
+  alurichat:
+    driver: bridge

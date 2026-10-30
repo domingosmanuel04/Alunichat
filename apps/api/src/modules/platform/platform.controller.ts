@@ -37,12 +37,15 @@ export class PlatformController {
   }
 
   @Post('signups/:tenantId/approve')
-  @ApiOperation({ summary: 'Approve signup and activate tenant on selected plan' })
+  @ApiOperation({
+    summary: 'Approve signup, set owner password and activate tenant',
+  })
   approveSignup(
     @Param('tenantId') tenantId: string,
+    @Body() body: { password?: string },
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.platform.approveSignup(tenantId, user.sub);
+    return this.platform.approveSignup(tenantId, user.sub, body?.password);
   }
 
   @Post('signups/:tenantId/reject')

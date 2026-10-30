@@ -12,6 +12,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
 import { Server, Socket } from 'socket.io';
+import { requiredSecret } from '../../common/config/required-secret';
 import { DomainEvents, MessageSentEvent } from '../../infrastructure/events/domain-events';
 import { JwtPayload } from '../../common/decorators/current-user.decorator';
 
@@ -22,7 +23,12 @@ type PresenceEntry = {
 };
 
 @WebSocketGateway({
-  cors: { origin: true, credentials: true },
+  cors: {
+    origin: (process.env.CORS_ORIGIN || 'http://localhost:3000')
+      .split(',')
+      .map((o) => o.trim()),
+    credentials: true,
+  },
   namespace: '/realtime',
 })
 export class RealtimeGateway
@@ -50,7 +56,8 @@ export class RealtimeGateway
         return;
       }
       const payload = await this.jwt.verifyAsync<JwtPayload>(token, {
-        secret: this.config.get<string>(
+        secret: requiredSecret(
+          this.config,
           'JWT_SECRET',
           'change-me-jwt-secret-min-32-chars-long!!',
         ),

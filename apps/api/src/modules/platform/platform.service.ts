@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { RedisService } from '../../infrastructure/redis/redis.service';
 import { AuditService } from '../audit/audit.service';
@@ -131,7 +132,19 @@ export class PlatformService {
       .filter(Boolean);
   }
 
-  async approveSignup(tenantId: string, actorUserId?: string) {
+  async approveSignup(
+    tenantId: string,
+    actorUserId?: string,
+    password?: string,
+  ) {
+    const plainPassword = (password || '').trim();
+    if (plainPassword.length < 8) {
+      throw new BadRequestException({
+        code: 'PASSWORD_REQUIRED',
+        message: 'Defina uma senha com pelo menos 8 caracteres para o utilizador',
+      });
+    }
+
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
       include: { plan: true, subscription: true },
@@ -155,9 +168,21 @@ export class PlatformService {
       });
     }
 
+    const ownerMembership = await this.prisma.membership.findFirst({
+      where: { tenantId, role: 'OWNER' },
+      include: { user: { select: { id: true, email: true, name: true } } },
+    });
+    if (!ownerMembership?.user) {
+      throw new BadRequestException({
+        code: 'OWNER_NOT_FOUND',
+        message: 'Pedido sem utilizador owner associado',
+      });
+    }
+
     const now = new Date();
     const periodEnd = new Date(now);
     periodEnd.setMonth(periodEnd.getMonth() + 1);
+    const passwordHash = await bcrypt.hash(plainPassword, 12);
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const next = await tx.tenant.update({
@@ -169,12 +194,26 @@ export class PlatformService {
             signup: {
               ...signup,
               status: 'approved',
+              passwordPending: false,
               approvedAt: now.toISOString(),
               approvedBy: actorUserId || null,
             },
           },
         },
         include: { plan: true },
+      });
+
+      await tx.user.update({
+        where: { id: ownerMembership.user.id },
+        data: {
+          passwordHash,
+          status: 'ACTIVE',
+        },
+      });
+
+      await tx.membership.update({
+        where: { id: ownerMembership.id },
+        data: { status: 'ACTIVE' },
       });
 
       if (tenant.subscription) {
@@ -201,18 +240,12 @@ export class PlatformService {
       after: { status: 'ACTIVE', planId: tenant.planId },
     });
 
-    const owner = await this.prisma.membership.findFirst({
-      where: { tenantId, role: 'OWNER' },
-      include: { user: { select: { email: true, name: true } } },
+    const webUrl = process.env.WEB_URL || 'http://localhost:3000';
+    await this.mail.send({
+      to: ownerMembership.user.email,
+      subject: 'Conta aprovada — ALURICHAT',
+      text: `Olá${ownerMembership.user.name ? ` ${ownerMembership.user.name}` : ''},\n\nA sua conta foi aprovada.\n\nAceda em: ${webUrl}/login\nE-mail: ${ownerMembership.user.email}\nSenha: ${plainPassword}\nEmpresa (tenant): ${updated.slug}\n\nRecomendamos alterar a senha após o primeiro acesso.`,
     });
-    if (owner?.user?.email) {
-      const webUrl = process.env.WEB_URL || 'http://localhost:3000';
-      await this.mail.send({
-        to: owner.user.email,
-        subject: 'Conta aprovada — ALURICHAT',
-        text: `Olá${owner.user.name ? ` ${owner.user.name}` : ''},\n\nO comprovativo foi aceite. Já pode entrar em ${webUrl}/login (empresa: ${updated.slug}).`,
-      });
-    }
 
     return updated;
   }

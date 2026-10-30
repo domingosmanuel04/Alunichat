@@ -43,6 +43,7 @@ import { MacrosModule } from './modules/macros/macros.module';
 import { PortalModule } from './modules/portal/portal.module';
 import { OpsModule } from './modules/ops/ops.module';
 import { FutureModule } from './modules/future/future.module';
+import { UploadsModule } from './modules/uploads/uploads.module';
 
 @Module({
   imports: [
@@ -91,6 +92,7 @@ import { FutureModule } from './modules/future/future.module';
     PortalModule,
     OpsModule,
     FutureModule,
+    UploadsModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: HttpExceptionFilter },

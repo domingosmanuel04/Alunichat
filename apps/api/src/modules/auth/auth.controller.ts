@@ -50,7 +50,6 @@ export class AuthController {
       required: [
         'ownerName',
         'email',
-        'password',
         'companyName',
         'slug',
         'planName',
@@ -59,7 +58,6 @@ export class AuthController {
       properties: {
         ownerName: { type: 'string' },
         email: { type: 'string', format: 'email' },
-        password: { type: 'string' },
         companyName: { type: 'string' },
         slug: { type: 'string' },
         planName: {

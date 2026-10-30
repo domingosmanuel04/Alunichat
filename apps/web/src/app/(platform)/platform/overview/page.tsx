@@ -17,13 +17,11 @@ function normalizeOverview(raw: PlatformOverview) {
     messagesTotal: raw.messagesTotal,
     conversationsTotal: raw.conversationsTotal,
     pendingSignups: raw.tenants?.pendingSignups ?? 0,
-    pendingPlanChanges: raw.tenants?.pendingPlanChanges ?? 0,
   };
 }
 
 type AlertsPayload = {
   pendingSignups?: unknown[];
-  pendingPlanChanges?: unknown[];
   failedWebhooks24h?: number;
   disconnectedChannels?: Record<string, unknown>[];
   nearPlanLimit?: Record<string, unknown>[];
@@ -73,8 +71,6 @@ export default function PlatformOverviewPage() {
 
   const pendingSignups =
     alerts?.pendingSignups?.length ?? data?.pendingSignups ?? 0;
-  const pendingPlanChanges =
-    alerts?.pendingPlanChanges?.length ?? data?.pendingPlanChanges ?? 0;
   const failedWebhooks = alerts?.failedWebhooks24h ?? 0;
   const disconnected = alerts?.disconnectedChannels?.length ?? 0;
   const nearLimit = alerts?.nearPlanLimit?.length ?? 0;
@@ -114,21 +110,6 @@ export default function PlatformOverviewPage() {
                   <p className="mt-1 text-xs text-ink-faint">Ver aprovações →</p>
                 </Card>
               </Link>
-              <Link href="/platform/signups?tab=plan-changes" className="block">
-                <Card
-                  className={
-                    pendingPlanChanges > 0
-                      ? 'border-sky-500/40 bg-sky-500/10 transition hover:bg-sky-500/15'
-                      : 'transition hover:bg-white/[0.03]'
-                  }
-                >
-                  <CardDescription>Mudanças de plano</CardDescription>
-                  <CardTitle className="mt-2 text-2xl tabular-nums text-sky-200">
-                    {pendingPlanChanges.toLocaleString('pt-PT')}
-                  </CardTitle>
-                  <p className="mt-1 text-xs text-ink-faint">Ver pedidos →</p>
-                </Card>
-              </Link>
               <Card
                 className={
                   failedWebhooks > 0 || disconnected > 0 || nearLimit > 0
@@ -140,7 +121,7 @@ export default function PlatformOverviewPage() {
                 <ul className="mt-3 space-y-1 text-sm text-ink-muted">
                   <li>Webhooks falhados (24h): {failedWebhooks}</li>
                   <li>Canais desligados: {disconnected}</li>
-                  <li>Perto do limite de plano: {nearLimit}</li>
+                  <li>Alertas de utilização: {nearLimit}</li>
                 </ul>
                 {alerts?.generatedAt ? (
                   <p className="mt-2 text-[10px] text-ink-faint">

@@ -3,6 +3,7 @@ import { createHash, randomBytes } from 'crypto';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CreateApiKeyDto } from './dto/api-key.dto';
+import { jsonArrayIncludes } from '../../common/utils/json-array';
 
 @Injectable()
 export class ApiKeysService {
@@ -124,14 +125,15 @@ export class ApiKeysService {
     channelId: string,
     actorUserId?: string,
   ) {
-    const keys = await this.prisma.apiKey.findMany({
-      where: {
-        tenantId,
-        revokedAt: null,
-        scopes: { has: `channel:${channelId}` },
-      },
-      select: { id: true },
-    });
+    const keys = (
+      await this.prisma.apiKey.findMany({
+        where: {
+          tenantId,
+          revokedAt: null,
+        },
+        select: { id: true, scopes: true },
+      })
+    ).filter((key) => jsonArrayIncludes(key.scopes, `channel:${channelId}`));
     for (const key of keys) {
       await this.revoke(tenantId, key.id, actorUserId);
     }

@@ -12,6 +12,7 @@ import * as bcrypt from 'bcryptjs';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { extname, join } from 'path';
 import { ROLE_PERMISSIONS, TenantRole, PERMISSION_SCOPES } from '@alurichat/shared';
+import { requiredSecret } from '../../common/config/required-secret';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { RedisService } from '../../infrastructure/redis/redis.service';
 import { AuditService } from '../audit/audit.service';
@@ -20,6 +21,7 @@ import { RegisterDto } from './dto/register.dto';
 import { JwtPayload } from '../../common/decorators/current-user.decorator';
 import { MailService } from '../mail/mail.service';
 import { randomBytes, createHmac } from 'crypto';
+import { asStringArray } from '../../common/utils/json-array';
 
 type MembershipWithTenant = Awaited<
   ReturnType<PrismaService['membership']['findUnique']>
@@ -196,9 +198,10 @@ export class AuthService {
     }
 
     const role = (membership?.role as TenantRole) || TenantRole.VIEWER;
+    const membershipPermissions = asStringArray(membership?.permissions);
     const permissions =
-      membership?.permissions?.length
-        ? membership.permissions
+      membershipPermissions.length > 0
+        ? membershipPermissions
         : ROLE_PERMISSIONS[role] ?? [];
 
     const payload: JwtPayload = {
@@ -326,7 +329,8 @@ export class AuthService {
       });
     }
 
-    const passwordHash = await bcrypt.hash(dto.password, 12);
+    // Senha definida apenas pelo Super Admin na aprovação
+    const passwordHash = await bcrypt.hash(randomBytes(32).toString('hex'), 12);
     const now = new Date();
     const periodEnd = new Date(now);
     periodEnd.setMonth(periodEnd.getMonth() + 1);
@@ -347,6 +351,7 @@ export class AuthService {
               planName,
               phone: dto.phone?.trim() || null,
               submittedAt: now.toISOString(),
+              passwordPending: true,
               ...(referralMeta
                 ? {
                     referralCode: referralMeta.code,
@@ -385,7 +390,7 @@ export class AuthService {
           email,
           passwordHash,
           name: dto.ownerName.trim(),
-          status: 'ACTIVE',
+          status: 'INACTIVE',
         },
       });
 
@@ -395,7 +400,7 @@ export class AuthService {
           userId: owner.id,
           role: 'OWNER',
           permissions: [],
-          status: 'ACTIVE',
+          status: 'INVITED',
         },
       });
 
@@ -404,9 +409,9 @@ export class AuthService {
 
     const dir = join(process.cwd(), 'uploads', 'payment-proofs');
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    const filename = `${result.tenant.id}${ext}`;
+    const filename = `${result.tenant.id}-signup-${Date.now()}${ext}`;
     writeFileSync(join(dir, filename), proof.buffer);
-    const paymentProofUrl = `/uploads/payment-proofs/${filename}?v=${Date.now()}`;
+    const paymentProofUrl = `/api/v1/uploads/payment-proofs/${filename}`;
 
     const settings = asSettings(result.tenant.settings);
     const signup = asSettings(settings.signup);
@@ -436,15 +441,28 @@ export class AuthService {
       after: { planName, slug, email },
     });
 
+    const webUrl = process.env.WEB_URL || 'http://localhost:3000';
     await this.mail.send({
       to: email,
       subject: 'Pedido recebido — ALURICHAT',
-      text: `Olá ${dto.ownerName.trim()},\n\nRecebemos o registo da empresa "${dto.companyName.trim()}" (plano ${planName}). Assim que o comprovativo for aprovado, poderá entrar em ${(process.env.WEB_URL || 'http://localhost:3000')}/login com o identificador "${slug}".`,
+      text: `Olá ${dto.ownerName.trim()},\n\nRecebemos o registo da empresa "${dto.companyName.trim()}". Assim que o administrador aprovar o pedido e definir a sua senha, poderá entrar em ${webUrl}/login com o e-mail ${email} e o identificador "${slug}".`,
     });
+
+    const admins = await this.prisma.user.findMany({
+      where: { platformRole: 'SUPER_ADMIN', status: 'ACTIVE' },
+      select: { email: true, name: true },
+    });
+    for (const admin of admins) {
+      await this.mail.send({
+        to: admin.email,
+        subject: 'Nova solicitação de conta — ALURICHAT',
+        text: `Olá${admin.name ? ` ${admin.name}` : ''},\n\nNova solicitação de cadastro:\n- Empresa: ${dto.companyName.trim()} (${slug})\n- Responsável: ${dto.ownerName.trim()}\n- E-mail: ${email}\n- Telefone: ${dto.phone?.trim() || '—'}\n\nAprove e defina a senha em: ${webUrl}/platform/signups`,
+      });
+    }
 
     return {
       message:
-        'Pedido enviado. Após a aprovação do comprovativo pelo administrador, poderá entrar no painel.',
+        'Pedido enviado. Após a aprovação do administrador (com definição de senha), poderá entrar no painel.',
       tenantId: result.tenant.id,
       slug,
       planName,
@@ -457,7 +475,8 @@ export class AuthService {
       const decoded = await this.jwt.verifyAsync<JwtPayload & { typ?: string }>(
         refreshToken,
         {
-          secret: this.config.get<string>(
+          secret: requiredSecret(
+            this.config,
             'JWT_REFRESH_SECRET',
             'change-me-jwt-refresh-secret-min-32!!',
           ),
@@ -731,7 +750,8 @@ export class AuthService {
 
   private async issueTokens(payload: JwtPayload) {
     const accessToken = await this.jwt.signAsync(payload, {
-      secret: this.config.get<string>(
+      secret: requiredSecret(
+        this.config,
         'JWT_SECRET',
         'change-me-jwt-secret-min-32-chars-long!!',
       ),
@@ -741,7 +761,8 @@ export class AuthService {
     const refreshToken = await this.jwt.signAsync(
       { ...payload, typ: 'refresh' },
       {
-        secret: this.config.get<string>(
+        secret: requiredSecret(
+          this.config,
           'JWT_REFRESH_SECRET',
           'change-me-jwt-refresh-secret-min-32!!',
         ),

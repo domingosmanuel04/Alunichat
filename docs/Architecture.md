@@ -30,7 +30,7 @@ ALURICHAT/
 
 ## Multi-tenant data
 
-**Shared database, shared schema** with `tenant_id` on every tenant-scoped row. Isolation is enforced in application middleware and query layers; PostgreSQL RLS is the planned hardening path (see [MultiTenant.md](./MultiTenant.md)).
+**Shared database, shared schema** with `tenant_id` on every tenant-scoped row. Isolation is enforced in application middleware and query layers (see [MultiTenant.md](./MultiTenant.md)).
 
 ## Cross-cutting concerns
 

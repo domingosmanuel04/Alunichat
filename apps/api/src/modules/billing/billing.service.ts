@@ -204,9 +204,9 @@ export class BillingService {
 
     const dir = join(process.cwd(), 'uploads', 'payment-proofs');
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    const filename = `plan-change-${tenantId}-${Date.now()}${ext}`;
+    const filename = `${tenantId}-plan-change-${Date.now()}${ext}`;
     writeFileSync(join(dir, filename), proof.buffer);
-    const paymentProofUrl = `/uploads/payment-proofs/${filename}`;
+    const paymentProofUrl = `/api/v1/uploads/payment-proofs/${filename}`;
 
     const now = new Date().toISOString();
     const history = Array.isArray(settings.paymentProofs)

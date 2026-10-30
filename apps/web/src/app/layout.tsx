@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
-import { DM_Sans, Sora } from 'next/font/google';
+import { DM_Sans, Fraunces, Outfit, Sora } from 'next/font/google';
 import { Toaster } from 'sonner';
+import { getSiteUrl } from '@/lib/site-url';
 import './globals.css';
 
 const dmSans = DM_Sans({
@@ -15,12 +16,38 @@ const sora = Sora({
   display: 'swap',
 });
 
+const fraunces = Fraunces({
+  subsets: ['latin'],
+  variable: '--font-fraunces',
+  display: 'swap',
+});
+
+const outfit = Outfit({
+  subsets: ['latin'],
+  variable: '--font-outfit',
+  display: 'swap',
+});
+
 export const metadata: Metadata = {
+  metadataBase: new URL(getSiteUrl()),
   title: {
     default: 'ALURICHAT',
     template: '%s · ALURICHAT',
   },
   description: 'Atendimento inteligente. Vendas automatizadas. Operação sob controle.',
+  alternates: {
+    canonical: '/',
+    types: {
+      'text/plain': [
+        { url: '/llms.txt', title: 'llms.txt' },
+        { url: '/roots.txt', title: 'roots.txt' },
+      ],
+    },
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
   icons: {
     icon: [
       { url: '/favicon.ico?v=3' },
@@ -36,7 +63,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="pt-BR" className="dark" suppressHydrationWarning>
       <body
-        className={`${dmSans.variable} ${sora.variable} font-sans antialiased`}
+        className={`${dmSans.variable} ${sora.variable} ${fraunces.variable} ${outfit.variable} font-sans antialiased`}
         suppressHydrationWarning
       >
         {children}

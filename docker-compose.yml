@@ -1,21 +1,25 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: alurichat-postgres
+  mysql:
+    image: mysql:8.4
+    container_name: alurichat-mysql
     restart: unless-stopped
     ports:
-      - "5437:5432"
+      - "3311:3306"
     environment:
-      POSTGRES_USER: alurichat
-      POSTGRES_PASSWORD: alurichat
-      POSTGRES_DB: alurichat
+      MYSQL_USER: alurichat
+      MYSQL_PASSWORD: alurichat
+      MYSQL_DATABASE: alurichat
+      MYSQL_ROOT_PASSWORD: alurichat
     volumes:
-      - alurichat_postgres_data:/var/lib/postgresql/data
+      - alurichat_mysql_data:/var/lib/mysql
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U alurichat -d alurichat"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-ualurichat", "-palurichat"]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 20
 
   redis:
     image: redis:7-alpine
@@ -32,5 +36,5 @@ services:
       retries: 10
 
 volumes:
-  alurichat_postgres_data:
+  alurichat_mysql_data:
   alurichat_redis_data:

@@ -4,7 +4,7 @@
 
 Alurichat uses a **shared database / shared schema** model:
 
-- One PostgreSQL database for all tenants.
+- One MySQL database for all tenants.
 - Every tenant-scoped table includes `tenant_id` (UUID FK → `Tenant`).
 - Global tables (e.g. platform feature flags) omit `tenant_id`.
 
@@ -23,7 +23,7 @@ Alurichat uses a **shared database / shared schema** model:
 
 ### 3. RLS evolution (phase 2)
 
-Enable PostgreSQL Row Level Security:
+Optional hardening (Postgres RLS example — not used with MySQL):
 
 ```sql
 ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;

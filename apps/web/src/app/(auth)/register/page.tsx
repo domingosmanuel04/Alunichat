@@ -14,33 +14,10 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { FormEvent, Suspense, useEffect, useMemo, useState } from 'react';
+import { FormEvent, Suspense, useEffect, useState } from 'react';
 
-type PlanOption = {
-  id: string;
-  name: string;
-  displayName: string;
-  priceMonthly: number;
-  limits?: Record<string, number>;
-  features?: Record<string, boolean>;
-};
-
-const PLAN_HINTS: Record<string, string> = {
-  FREE: 'Para validar a operação',
-  STARTER: 'Para equipas pequenas a começar',
-  PRO: 'Para equipas que vendem',
-  BUSINESS: 'Para operações em escala',
-  ENTERPRISE: 'Solução personalizada',
-};
-
-const LANDING_PLAN_MAP: Record<string, string> = {
-  starter: 'FREE',
-  free: 'FREE',
-  pro: 'PRO',
-  business: 'BUSINESS',
-  empresarial: 'BUSINESS',
-  enterprise: 'ENTERPRISE',
-};
+/** Plano implícito no pedido — a UI já não pede escolha. */
+const DEFAULT_PLAN_NAME = 'PRO';
 
 function slugify(value: string) {
   return value
@@ -52,11 +29,6 @@ function slugify(value: string) {
     .slice(0, 40);
 }
 
-function formatPrice(amount: number) {
-  if (!amount) return 'Grátis';
-  return `${amount.toLocaleString('pt-AO')} Kz/mês`;
-}
-
 function RegisterForm() {
   const router = useRouter();
   const search = useSearchParams();
@@ -64,7 +36,6 @@ function RegisterForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
-  const [plans, setPlans] = useState<PlanOption[]>([]);
 
   const [ownerName, setOwnerName] = useState('');
   const [email, setEmail] = useState('');
@@ -73,7 +44,6 @@ function RegisterForm() {
   const [companyName, setCompanyName] = useState('');
   const [slug, setSlug] = useState('');
   const [slugTouched, setSlugTouched] = useState(false);
-  const [planName, setPlanName] = useState('PRO');
   const [proof, setProof] = useState<File | null>(null);
   const [referralCode, setReferralCode] = useState('');
   const [captchaToken, setCaptchaToken] = useState('');
@@ -81,10 +51,6 @@ function RegisterForm() {
   const [captchaAnswer, setCaptchaAnswer] = useState('');
 
   useEffect(() => {
-    const fromQuery = (search.get('plan') || '').toLowerCase();
-    if (fromQuery && LANDING_PLAN_MAP[fromQuery]) {
-      setPlanName(LANDING_PLAN_MAP[fromQuery]);
-    }
     const ref = search.get('ref') || search.get('referral');
     if (ref) setReferralCode(ref);
   }, [search]);
@@ -101,36 +67,6 @@ function RegisterForm() {
       }
     })();
   }, []);
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const list = await api.listBillingPlans();
-        const mapped = list
-          .map((p) => ({
-            id: String(p.id || ''),
-            name: String(p.name || ''),
-            displayName: String(p.displayName || p.name || ''),
-            priceMonthly: Number(p.priceMonthly || 0),
-            limits: (p.limits || {}) as Record<string, number>,
-            features: (p.features || {}) as Record<string, boolean>,
-          }))
-          .filter((p) => p.name && p.name !== 'ENTERPRISE');
-        setPlans(mapped);
-        if (mapped.length && !mapped.some((p) => p.name === planName)) {
-          setPlanName(mapped[0].name);
-        }
-      } catch {
-        setPlans([]);
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const selectedPlan = useMemo(
-    () => plans.find((p) => p.name === planName) || null,
-    [plans, planName],
-  );
 
   function onCompanyChange(value: string) {
     setCompanyName(value);
@@ -157,14 +93,6 @@ function RegisterForm() {
         return;
       }
       setStep(2);
-      return;
-    }
-    if (step === 2) {
-      if (!planName) {
-        setError('Selecione um plano');
-        return;
-      }
-      setStep(3);
     }
   }
 
@@ -175,11 +103,6 @@ function RegisterForm() {
     if (err) {
       setError(err);
       setStep(1);
-      return;
-    }
-    if (!planName) {
-      setError('Selecione um plano');
-      setStep(2);
       return;
     }
     if (!proof) {
@@ -195,7 +118,7 @@ function RegisterForm() {
       form.append('password', password);
       form.append('companyName', companyName.trim());
       form.append('slug', slug.trim());
-      form.append('planName', planName);
+      form.append('planName', DEFAULT_PLAN_NAME);
       if (phone.trim()) form.append('phone', phone.trim());
       if (referralCode.trim()) form.append('referralCode', referralCode.trim());
       if (captchaToken) form.append('captchaToken', captchaToken);
@@ -230,8 +153,7 @@ function RegisterForm() {
         </h1>
         <p className="mt-2 text-sm text-ink-muted">
           Recebemos o seu comprovativo. Assim que o administrador aprovar o
-          pagamento, poderá entrar no painel com o plano{' '}
-          <strong className="text-ink">{selectedPlan?.displayName || planName}</strong>.
+          pagamento, poderá entrar no painel.
         </p>
         <Button className="mt-6 w-full" onClick={() => router.push('/login')}>
           Ir para Entrar
@@ -244,11 +166,11 @@ function RegisterForm() {
     <div className="w-full max-w-lg rounded-2xl border border-surface-border bg-surface-raised/80 p-8 backdrop-blur-md">
       <h1 className="font-display text-2xl font-semibold text-ink">Criar conta</h1>
       <p className="mt-1 text-sm text-ink-muted">
-        Preencha os dados, escolha o plano e envie o comprovativo.
+        Preencha os dados e envie o comprovativo de pagamento.
       </p>
 
       <div className="mt-5 flex items-center gap-2 text-xs">
-        {[1, 2, 3].map((n) => (
+        {[1, 2].map((n) => (
           <div key={n} className="flex flex-1 items-center gap-2">
             <span
               className={cn(
@@ -261,9 +183,9 @@ function RegisterForm() {
               {n}
             </span>
             <span className={cn('hidden sm:inline', step >= n ? 'text-ink' : 'text-ink-faint')}>
-              {n === 1 ? 'Dados' : n === 2 ? 'Plano' : 'Pagamento'}
+              {n === 1 ? 'Dados' : 'Pagamento'}
             </span>
-            {n < 3 ? <span className="h-px flex-1 bg-white/10" /> : null}
+            {n < 2 ? <span className="h-px flex-1 bg-white/10" /> : null}
           </div>
         ))}
       </div>
@@ -336,65 +258,20 @@ function RegisterForm() {
         ) : null}
 
         {step === 2 ? (
-          <div className="space-y-3">
-            {plans.length === 0 ? (
-              <p className="text-sm text-ink-muted">A carregar planos…</p>
-            ) : (
-              plans.map((p) => (
-                <button
-                  key={p.id || p.name}
-                  type="button"
-                  onClick={() => setPlanName(p.name)}
-                  className={cn(
-                    'w-full rounded-xl border p-4 text-left transition',
-                    planName === p.name
-                      ? 'border-brand bg-brand/10'
-                      : 'border-surface-border hover:border-white/20',
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-ink">{p.displayName}</p>
-                      <p className="mt-0.5 text-xs text-ink-muted">
-                        {PLAN_HINTS[p.name] || 'Plano disponível'}
-                      </p>
-                    </div>
-                    <p className="text-sm font-semibold text-brand-light">
-                      {formatPrice(p.priceMonthly)}
-                    </p>
-                  </div>
-                  {p.limits ? (
-                    <p className="mt-2 text-xs text-ink-faint">
-                      Até {p.limits.channels ?? '—'} instâncias ·{' '}
-                      {p.limits.users ?? '—'} utilizadores
-                    </p>
-                  ) : null}
-                </button>
-              ))
-            )}
-          </div>
-        ) : null}
-
-        {step === 3 ? (
           <div className="space-y-4">
             <div className="rounded-xl border border-surface-border bg-white/[0.03] p-4">
               <div className="flex items-center gap-2 text-sm text-ink">
                 <CreditCard className="h-4 w-4 text-brand-light" />
-                Plano selecionado:{' '}
-                <strong>{selectedPlan?.displayName || planName}</strong>
+                <strong>Pagamento</strong>
               </div>
               <p className="mt-1 text-xs text-ink-muted">
-                {formatPrice(selectedPlan?.priceMonthly || 0)} — envie o
-                comprovativo do pagamento para ativação.
+                Faça a transferência e envie o comprovativo para ativação da conta.
               </p>
               <div className="mt-3 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-ink-muted">
                 <p className="font-medium text-ink">Dados para transferência</p>
-                <p className="mt-1">Titular: Makiratec</p>
-                <p>IBAN: AO06 0000 0000 0000 0000 0000 0</p>
-                <p>Referência: use o slug da empresa ({slug || '…'})</p>
-                <p className="mt-1 text-ink-faint">
-                  *Substitua o IBAN pelos dados reais da empresa em produção.
-                </p>
+                <p className="mt-1">Titular: Domingos Paulo Manuel</p>
+                <p>IBAN: 0040 0000 74402723101 86</p>
+                <p>Express: 945 400 126</p>
               </div>
             </div>
 
@@ -433,7 +310,7 @@ function RegisterForm() {
               className="flex-1"
               onClick={() => {
                 setError(null);
-                setStep((s) => s - 1);
+                setStep(1);
               }}
             >
               <ChevronLeft className="h-4 w-4" />
@@ -441,7 +318,7 @@ function RegisterForm() {
             </Button>
           ) : null}
 
-          {step < 3 ? (
+          {step < 2 ? (
             <Button type="button" className="flex-1" onClick={goNext}>
               Avançar
               <ChevronRight className="h-4 w-4" />
